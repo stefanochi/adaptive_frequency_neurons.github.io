@@ -80,12 +80,15 @@ function createNewTargetUI() {
     const card = document.createElement('div');
     card.className = 'target-card';
     card.id = `card_${id}`;
-    card.style = "display: flex; align-items: center; gap: 15px; background: #f3f4f6; padding: 10px; margin-bottom: 8px; border-radius: 6px;";
     card.innerHTML = `
-        <strong style="min-width: 80px;">Target ${targetIdCounter}:</strong>
-        <input type="range" id="input_${id}" min="0.1" max="4.6" value="${initialRange}" step="0.1" style="flex-grow: 1; cursor: pointer;">
-        <span style="min-width: 45px; text-align: right;"><span id="display_${id}" style="font-weight: bold; color: #4f46e5;">${initialRange}</span> m</span>
-        <button class="btn-remove" id="delete_${id}" style="background: #ef4444; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer;">Remove</button>
+        <strong class="target-label">Target ${targetIdCounter}</strong>
+        
+        <input type="range" id="input_${id}" min="0.1" max="4.6" value="${initialRange}" step="0.1">
+        
+        <div class="target-card-meta">
+            <span class="range-value">Range: <span id="display_${id}" class="value-display">${initialRange}</span> m</span>
+            <button class="btn-remove" id="delete_${id}">Remove</button>
+        </div>
     `;
 
     targetContainer.appendChild(card);
