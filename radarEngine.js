@@ -3,7 +3,7 @@ export const fmcw_base_config = {
     n_rx: 1, 
     fb: 60e9,
     B: 2e9,
-    n_chirps: 1, 
+    n_chirps: 64, 
     n_samples: 128,
     t_chirp: 6.4e-5,
     IQ: true, 

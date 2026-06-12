@@ -8,12 +8,14 @@ const timeAxis = NumPy.linspace(0, radar.t_chirp, radar.n_samples, false);
 // --- 2. Live Dynamic State Registries ---
 const MAX_HISTORY_POINTS = 200; 
 let BATCH_SIZE = 4; 
+let chirpCounter = 0;
 let timeStepCounter = 0;
 
 // Dynamic tracking stores
 let activeTargetsList = []; 
 let rawChirpSamples = new Array(fmcw_base_config.n_samples).fill({ re: 0, im: 0 });
 let chirpPlot = new Array(fmcw_base_config.n_samples).fill(0);
+let matrixFrame = radar.init_empty_frame();
 
 // Keep track of runtime configuration for oscillators
 let currentLambda = 5; // Default lambda scale (x 1e-6)
@@ -71,7 +73,7 @@ function createNewTargetUI() {
     const targetStateObject = {
         id: id,
         range: initialRange,
-        velocity: 0,
+        velocity: 4.0,
         angle: 0
     };
     activeTargetsList.push(targetStateObject);
@@ -118,21 +120,107 @@ function createNewTargetUI() {
     rebuildOscillatorNetwork();
 }
 
+// --- Optimized Library FFT 1D Vector Wrapper ---
+function libraryFFT1D(complexArray) {
+    const N = complexArray.length;
+    
+    // 1. Initialize the Signalsmith FFT runner for this array size
+    const fftInstance = new FFT(N);
+    
+    // 2. Signalsmith uses interleaved flat Float64Arrays: [r0, i0, r1, i1, ...]
+    // This requires exactly 2 * N entries
+    const flatInput = new Float64Array(N * 2);
+    for (let i = 0; i < N; i++) {
+        flatInput[i * 2] = complexArray[i].re;
+        flatInput[i * 2 + 1] = complexArray[i].im;
+    }
+    
+    // Allocate the output container spectrum array
+    const flatOutput = new Float64Array(N * 2);
+    
+    // 3. Execute the native compiled transform kernel
+    fftInstance.fft(flatInput, flatOutput);
+    
+    // 4. Pack the interleaved data back out into your standard object structures
+    const outputComplex = new Array(N);
+    for (let i = 0; i < N; i++) {
+        outputComplex[i] = {
+            re: flatOutput[i * 2],
+            im: flatOutput[i * 2 + 1]
+        };
+    }
+    
+    return outputComplex;
+}
+
+/**
+ * Computes a 2D FFT on a radar frame matrix (Chirps x Samples) using an external FFT library.
+ * Includes a vertical FFT shift to center zero-Doppler velocity.
+ * * @param {Array<Array<{re: number, im: number}>>} frameMatrix - The 2D time-domain ADC data frame.
+ * @returns {Array<Array<number>>} A 2D matrix of logarithmic spectral magnitudes (dB).
+ */
+function compute2DFFT(frameMatrix) {
+    const nChirps = frameMatrix.length;
+    const nSamples = frameMatrix[0].length;
+
+    // ==========================================
+    // STAGE 1: Horizontal RANGE FFT 
+    // ==========================================
+    const rangeProcessedMatrix = frameMatrix.map(chirpRow => libraryFFT1D(chirpRow));
+
+    // ==========================================
+    // STAGE 2: Vertical DOPPLER FFT
+    // ==========================================
+    const complex2DMatrix = Array.from({ length: nChirps }, () => new Array(nSamples));
+
+    for (let col = 0; col < nSamples; col++) {
+        const columnVector = [];
+        for (let row = 0; row < nChirps; row++) {
+            columnVector.push(rangeProcessedMatrix[row][col]);
+        }
+
+        // Run the 1D FFT vertically down the column vector using the library
+        const dopplerProcessedVector = libraryFFT1D(columnVector);
+
+        // Apply FFT-Shift to center the 0-velocity component vertically
+        const halfChirps = nChirps / 2;
+        for (let row = 0; row < nChirps; row++) {
+            const shiftedRowIndex = (row + halfChirps) % nChirps;
+            complex2DMatrix[shiftedRowIndex][col] = dopplerProcessedVector[row];
+        }
+    }
+
+    // ==========================================
+    // STAGE 3: Calculate Logarithmic Magnitudes (dB)
+    // ==========================================
+    return complex2DMatrix.map(row => {
+        return row.map(complexSample => {
+            const magnitude = Math.sqrt(complexSample.re * complexSample.re + complexSample.im * complexSample.im);
+            return 20 * Math.log10(magnitude + 1e-6); // Safeguard against log(0)
+        });
+    });
+}
+
 // --- 5. Composite Signal Simulation Pipeline ---
 function runSimulationPipeline() {
+    let rdmMagnitudeMatrix = [];
+
     if (activeTargetsList.length === 0) {
         rawChirpSamples = new Array(fmcw_base_config.n_samples).fill({ re: 0, im: 0 });
         chirpPlot = new Array(fmcw_base_config.n_samples).fill(0);
+        matrixFrame = radar.init_empty_frame();
     } else {
         radar.set_targets(activeTargetsList);
-        const matrixFrame = radar.generate_data_snr();
+        matrixFrame = radar.generate_data_snr();
         rawChirpSamples = matrixFrame[0][0];
         chirpPlot = rawChirpSamples.map(sample => sample.re);
     }
 
+    rdmMagnitudeMatrix = compute2DFFT(matrixFrame[0]);
+
     // Update time-domain chart layout canvas safely
     Plotly.restyle('radarChart', { y: [chirpPlot] });
-
+    Plotly.restyle('rangeDopplerMap', { z: [rdmMagnitudeMatrix] });
     // Instantly recalibrate the neural oscillator network sizing
     // rebuildOscillatorNetwork();
 }
@@ -145,6 +233,30 @@ const layout = {
     plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff'
 };
 Plotly.newPlot('radarChart', [{ x: timeAxis, y: chirpPlot, type: 'scatter', mode: 'lines', line: { color: '#4f46e5', width: 2 } }], layout, { responsive: true });
+
+// Plotly Configuration for the Range-Doppler Heatmap Canvas
+const rangeAxisAxis = Array.from({ length: radar.n_samples }, (_, i) =>  i);
+const dopplerAxisAxis = Array.from({ length: radar.n_chirps }, (_, i) => i - (radar.n_chirps / 2));
+
+const rdmTrace = {
+    x: rangeAxisAxis,
+    y: dopplerAxisAxis,
+    z: Array.from({ length: radar.n_chirps }, () => new Array(radar.n_samples).fill(0)),
+    type: 'heatmap',
+    colorscale: 'Jet',
+    showscale: false
+};
+
+const rdmLayout = {
+    title: 'Live 2D Range-Doppler Spectrogram Map',
+    xaxis: { title: 'Range (Meters)', range: [0,   128], gridcolor: '#e5e7eb' },
+    yaxis: { title: 'Doppler / Velocity (Bins)', gridcolor: '#e5e7eb' },
+    plot_bgcolor: '#ffffff',
+    paper_bgcolor: '#ffffff',
+    margin: { t: 50, b: 50, l: 50, r: 20 }
+};
+
+Plotly.newPlot('rangeDopplerMap', [rdmTrace], rdmLayout, { responsive: true });
 
 function handleLambdaUpdate() {
     currentLambda = parseFloat(slider_lambda.value);
@@ -205,11 +317,15 @@ function liveSimulationLoop() {
 
     for (let step = 0; step < BATCH_SIZE; step++) {
         const sampleIndex = timeStepCounter % rawChirpSamples.length;
-        const currentInputSignal = rawChirpSamples[sampleIndex];
+        const chirpIndex = chirpCounter % radar.n_chirps;
+        const currentInputSignal = matrixFrame[0][chirpIndex][sampleIndex];
 
         var { ws } = resonator.update_neurons(currentInputSignal);
         
         timeStepCounter++;
+        if(timeStepCounter % radar.n_samples === 0){
+            chirpCounter++;
+        }
 
         for (let k = 0; k < resonator.nfreq; k++) {
             newXValues[k].push(timeStepCounter);
