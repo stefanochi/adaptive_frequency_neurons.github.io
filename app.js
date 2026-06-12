@@ -7,7 +7,7 @@ const timeAxis = NumPy.linspace(0, radar.t_chirp, radar.n_samples, false);
 
 // --- 2. Live Dynamic State Registries ---
 const MAX_HISTORY_POINTS = 200; 
-const BATCH_SIZE = 4; 
+let BATCH_SIZE = 4; 
 let timeStepCounter = 0;
 
 // Dynamic tracking stores
@@ -26,6 +26,8 @@ const targetContainer = document.getElementById('targetControlsContainer');
 const addTargetBtn = document.getElementById('addTargetBtn');
 const slider_lambda = document.getElementById('lambda_slider');
 const display_lambda = document.getElementById('val_lambda');
+const slider_speed = document.getElementById('speed_slider');
+const display_speed = document.getElementById('val_speed');
 const hannToggle = document.getElementById('hannToggle');
 
 // --- 3. Dynamic Oscillator Network Instantiator ---
@@ -158,6 +160,13 @@ hannToggle.addEventListener('change', (event) => {
 
 // Bind targeted manual addition button action handler
 addTargetBtn.addEventListener('click', () => createNewTargetUI());
+
+slider_speed.addEventListener('input', (event) => {
+    let val = parseInt(slider_speed.value);
+    console.log(val);
+    display_speed.innerText = val;
+    BATCH_SIZE = val;
+});
 
 // --- 7. Dynamic Plotly Traces Management ---
 const layout_freq = {
