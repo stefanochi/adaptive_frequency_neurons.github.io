@@ -63,10 +63,10 @@ function rebuildOscillatorNetwork() {
 // --- 4. Dynamic Target UI Factory ---
 let targetIdCounter = 0;
 
-function createNewTargetUI(initialRange = 3) {
+function createNewTargetUI() {
     targetIdCounter++;
     const id = `target_${targetIdCounter}`;
-
+    let initialRange = Math.round(Math.random() * 4.6 * 10) / 10;
     // Register target state inside the global radar target list
     const targetStateObject = {
         id: id,
@@ -136,9 +136,9 @@ function runSimulationPipeline() {
 
 // --- 6. Global Setup & Constant Controls Handlers ---
 const layout = {
-    title: 'Composite Time-Domain De-chirped Echo Signal',
+    title: 'Chirp Signal',
     xaxis: { title: 'Time (Seconds)', tickformat: '.2e', gridcolor: '#e5e7eb' },
-    yaxis: { title: 'Signal Voltage Amplitude', range: [-2.5, 2.5], gridcolor: '#e5e7eb' },
+    yaxis: { title: 'Signal Amplitude', range: [-2.5, 2.5], gridcolor: '#e5e7eb' },
     plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff'
 };
 Plotly.newPlot('radarChart', [{ x: timeAxis, y: chirpPlot, type: 'scatter', mode: 'lines', line: { color: '#4f46e5', width: 2 } }], layout, { responsive: true });
@@ -170,7 +170,7 @@ slider_speed.addEventListener('input', (event) => {
 
 // --- 7. Dynamic Plotly Traces Management ---
 const layout_freq = {
-    title: 'Real-Time Adaptive Frequency Evolution Tracker',
+    title: 'Real-Time Adaptive Frequency Evolution',
     xaxis: { title: 'Simulation Step', range: [0, MAX_HISTORY_POINTS], gridcolor: '#e5e7eb' },
     yaxis: { title: 'Tracked Target Range (Meters)', range: [0, 4.7], gridcolor: '#e5e7eb' }, // Changed to Range domain for easy tracking visualization
     plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff', showlegend: true

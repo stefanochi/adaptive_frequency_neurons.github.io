@@ -45,7 +45,7 @@ export class FmcwRadar {
         this.random_Ap = false; 
         this.targets_info = [];
         this.target_snr_db = 20;
-        this.enable_hann = true;
+        this.enable_hann = false;
     }
 
     set_targets(targets_info) {
