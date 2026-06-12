@@ -24,6 +24,14 @@ export const NumPy = {
         while(u === 0) u = Math.random(); 
         while(v === 0) v = Math.random();
         return (Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v)) * std + mean;
+    },
+    // Generates Hanning window coefficients
+    hanning: (m) => {
+        const window = [];
+        for (let i = 0; i < m; i++) {
+            window.push(0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (m - 1)));
+        }
+        return window;
     }
 };
 
@@ -37,6 +45,7 @@ export class FmcwRadar {
         this.random_Ap = false; 
         this.targets_info = [];
         this.target_snr_db = 20;
+        this.enable_hann = true;
     }
 
     set_targets(targets_info) {
@@ -155,7 +164,12 @@ export class FmcwRadar {
         this.snr = 10 * Math.log10(p_signal / actual_p_noise);
         this.pure_signal = JSON.parse(JSON.stringify(frame));
 
-        return this._add_frames(frame, noise);
+        frame = this._add_frames(frame, noise);
+
+        if(this.enable_hann){
+            return this.apply_hann(frame);
+        }
+        return frame;
     }
 
     _generate_single_target(target) {
