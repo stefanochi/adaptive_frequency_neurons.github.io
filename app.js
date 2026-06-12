@@ -83,7 +83,7 @@ function createNewTargetUI() {
     card.innerHTML = `
         <strong class="target-label">Target ${targetIdCounter}</strong>
         
-        <input type="range" id="input_${id}" min="0.1" max="4.6" value="${initialRange}" step="0.1">
+        <input type="range" id="input_${id}" min="0.1" max="4.6" value="${initialRange}" step="0.01">
         
         <div class="target-card-meta">
             <span class="range-value">Range: <span id="display_${id}" class="value-display">${initialRange}</span> m</span>
