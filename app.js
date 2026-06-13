@@ -73,7 +73,7 @@ function createNewTargetUI() {
     const targetStateObject = {
         id: id,
         range: initialRange,
-        velocity: 4.0,
+        velocity: 0.0,
         angle: 0
     };
     activeTargetsList.push(targetStateObject);
@@ -86,9 +86,11 @@ function createNewTargetUI() {
         <strong class="target-label">Target ${targetIdCounter}</strong>
         
         <input type="range" id="input_${id}" min="0.1" max="4.6" value="${initialRange}" step="0.01">
+        <input type="range" id="input_${id}_vel" min="-20" max="20" value="0" step="0.01">
         
         <div class="target-card-meta">
             <span class="range-value">Range: <span id="display_${id}" class="value-display">${initialRange}</span> m</span>
+            <span class="range-value">Speed: <span id="display_${id}_vel" class="value-display">0</span> m</span>
             <button class="btn-remove" id="delete_${id}">Remove</button>
         </div>
     `;
@@ -103,6 +105,16 @@ function createNewTargetUI() {
         const val = parseFloat(e.target.value);
         valueDisplay.innerText = val;
         targetStateObject.range = val; // Directly mutate the active array configuration object
+        runSimulationPipeline();
+    });
+
+    const sliderInput_vel = card.querySelector(`#input_${id}_vel`);
+    const valueDisplay_vel = card.querySelector(`#display_${id}_vel`);
+
+    sliderInput_vel.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        valueDisplay_vel.innerText = val;
+        targetStateObject.velocity = val; // Directly mutate the active array configuration object
         runSimulationPipeline();
     });
 

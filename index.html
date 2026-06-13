@@ -7,15 +7,6 @@
     <link rel="stylesheet" href="style.css">
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/signalsmith-js-fft@1.0.0/fft.min.js"></script>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 30px; background-color: #f9fafb; }
-        .container { max-width: 800px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .controls { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; background: #f3f4f6; padding: 15px; border-radius: 6px; }
-        .control-group { display: flex; flex-direction: column; }
-        label { font-weight: bold; margin-bottom: 5px; color: #374151; }
-        input[type="range"] { width: 100%; cursor: pointer; }
-        .value-display { font-weight: normal; color: #4f46e5; }
-    </style>
 </head>
 <body>
 
@@ -23,46 +14,39 @@
     <h2>Adaptive-Frequency Resonate-and-Fire Neurons for Spectral Estimation of Streaming Radar Signals</h2>
     <p>Adjust the sliders below to change the signal.</p>
 
-    <div class="controls">
-        <!-- <div class="control-group">
-            <label for="range1">Target 1 Range: <span id="val1" class="value-display">20</span> m</label>
-            <input type="range" id="range1" min="0.1" max="4.7" value="20" step="0.01">
-        </div>
-        <div class="control-group">
-            <label for="range2">Target 2 Range: <span id="val2" class="value-display">50</span> m</label>
-            <input type="range" id="range2" min="0.1" max="4.7" value="50" step="0.01">
-        </div> -->
-        <div class="toggle-container">
-            <span class="toggle-label">Hanning Window:</span>
-            <label class="switch">
-                <input type="checkbox" id="hannToggle">
-                <span class="slider round"></span>
-            </label>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
-            <span class="toggle-label">Inverse Lambda (Scale):</span>
-            <input type="range" id="lambda_slider" min="1" max="40" value="5">
-            <span style="font-weight: bold; min-width: 45px;"><span id="val_lambda">5</span></span>
-        </div>
-        <div style="display: flex; align-items: center; gap: 8px; margin-left: auto;">
-            <span class="toggle-label">simulation speed:</span>
-            <input type="range" id="speed_slider" min="1" max="10" value="2">
-            <span style="font-weight: bold; min-width: 45px;"><span id="val_speed">5</span></span>
-        </div>
-    </div>
-
-    <div style="margin-bottom: 20px;">
-        <button id="addTargetBtn" class="btn-add">+ Add New Target</button>
-    </div>
-
-        <div id="targetControlsContainer"></div>
-    </div>
-
     <div class="charts-wrapper">
-        <div id="radarChart"></div>
-        <div id="frequencyHistory"></div>
-        <div id="rangeDopplerMap"></div>
+
+        <div class="controls">
+            <div class="toggle-container">
+                <span class="toggle-label">Hanning:</span>
+                <label class="switch">
+                    <input type="checkbox" id="hannToggle">
+                    <span class="slider round"></span>
+                </label>
+            </div>
+            <div class="slider-group">
+                <span class="toggle-label">Inverse Lambda:</span>
+                <input type="range" id="lambda_slider" min="1" max="40" value="5">
+                <span class="readout-val"><span id="val_lambda">5</span></span>
+            </div>
+            <div class="slider-group">
+                <span class="toggle-label">Speed:</span>
+                <input type="range" id="speed_slider" min="1" max="10" value="2">
+                <span class="readout-val"><span id="val_speed">2</span></span>
+            </div>
+        </div>
+
+        <div class="target-management-block">
+            <button id="addTargetBtn" class="btn-add">+ Add New Target</button>
+            <div id="targetControlsContainer"></div>
+        </div>
+        
+        <div id="radarChart" class="chart-box"></div>
+
+        <div id="frequencyHistory" class="chart-box"></div>
+
+        <div id="rangeDopplerMap" class="chart-box"></div>
+        
     </div>
 </div>
 
