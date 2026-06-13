@@ -319,4 +319,9 @@ export class FmcwRadar {
             return calcFreq(range);
         }
     }
+
+    get_velocity_from_doppler_frequency(frequency) {
+        let lam = FmcwRadar.c / this.fb
+        return (lam / 2.0) * frequency;
+    }
 }

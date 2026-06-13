@@ -111,13 +111,19 @@ export class AdaptiveResonate {
         return integrated_ws;
     }
 
-    update_neurons(input_current) {
+    update_neurons(input_currents) {
+        for (let i=0; i<this.n_rxs; i++) {
+            this.update_neurons_antenna(input_currents[i], i);
+        }
+    }
+
+    update_neurons_antenna(input_current, antenna) {
         // Calculate dynamic feedback: summing along vs[0, :]
         let feedback_re = 0;
         let feedback_im = 0;
         for (let k = 0; k < this.nfreq; k++) {
-            feedback_re += this.vs[0][k].re;
-            feedback_im += this.vs[0][k].im;
+            feedback_re += this.vs[antenna][k].re;
+            feedback_im += this.vs[antenna][k].im;
         }
 
         // input_current can be a scalar real value or a complex object
@@ -130,7 +136,7 @@ export class AdaptiveResonate {
         let vs_inter = new Array(this.nfreq);
 
         for (let k = 0; k < this.nfreq; k++) {
-            const v = this.vs[0][k];
+            const v = this.vs[antenna][k];
             const magnitude = Math.sqrt(v.re * v.re + v.im * v.im);
 
             // Equivalent of vs_val = self.vs[0, k] / np.abs(self.vs[0, k])
@@ -143,27 +149,27 @@ export class AdaptiveResonate {
             w_dot = NumPy.nanToNum(w_dot);
 
             // Frequency adaptive step
-            this.ws[0][k] -= (w_dot / this.w_scale[0][k]);
+            this.ws[antenna][k] -= (w_dot / this.w_scale[antenna][k]);
 
             // Add input current vector
-            this.vs[0][k].re += in_vals_re;
-            this.vs[0][k].im += in_vals_im;
+            this.vs[antenna][k].re += in_vals_re;
+            this.vs[antenna][k].im += in_vals_im;
 
             // Capture snapshot copy for intermediate history state tracks
-            vs_inter[k] = { re: this.vs[0][k].re, im: this.vs[0][k].im };
+            vs_inter[k] = { re: this.vs[antenna][k].re, im: this.vs[antenna][k].im };
 
             // Rotate through exponential angular integration: vs *= exp(1j * ws * t_res)
             // Euler's identity formula: exp(j*theta) = cos(theta) + j*sin(theta)
-            const theta = this.ws[0][k] * this.t_res;
+            const theta = this.ws[antenna][k] * this.t_res;
             const cos_t = Math.cos(theta);
             const sin_t = Math.sin(theta);
 
-            const curr_re = this.vs[0][k].re;
-            const curr_im = this.vs[0][k].im;
+            const curr_re = this.vs[antenna][k].re;
+            const curr_im = this.vs[antenna][k].im;
 
             // Complex multiplication
-            this.vs[0][k].re = curr_re * cos_t - curr_im * sin_t;
-            this.vs[0][k].im = curr_re * sin_t + curr_im * cos_t;
+            this.vs[antenna][k].re = curr_re * cos_t - curr_im * sin_t;
+            this.vs[antenna][k].im = curr_re * sin_t + curr_im * cos_t;
         }
 
         return { ws: this.ws, vs: this.vs, vs_inter: [vs_inter] };
@@ -182,7 +188,7 @@ export class AdaptiveResonate {
             // Unpacking input_current element across time column index
             const current_input = in_list[0][i];
 
-            const { ws, vs, vs_inter } = this.update_neurons(current_input);
+            const { ws, vs, vs_inter } = this.update_neurons_antenna(current_input, 0);
 
             if (intermediate) {
                 vs_hist[i * 2] = NumPy.copy(vs_inter);

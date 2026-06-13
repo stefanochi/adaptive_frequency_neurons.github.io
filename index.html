@@ -20,7 +20,7 @@
             <div class="toggle-container">
                 <span class="toggle-label">Hanning:</span>
                 <label class="switch">
-                    <input type="checkbox" id="hannToggle">
+                    <input type="checkbox" id="hannToggle" value="on">
                     <span class="slider round"></span>
                 </label>
             </div>
@@ -31,7 +31,7 @@
             </div>
             <div class="slider-group">
                 <span class="toggle-label">Speed:</span>
-                <input type="range" id="speed_slider" min="1" max="10" value="2">
+                <input type="range" id="speed_slider" min="1" max="60" value="2">
                 <span class="readout-val"><span id="val_speed">2</span></span>
             </div>
         </div>
@@ -44,6 +44,7 @@
         <div id="radarChart" class="chart-box"></div>
 
         <div id="frequencyHistory" class="chart-box"></div>
+        <div id="frequencyHistoryDoppler" class="chart-box"></div>
 
         <div id="rangeDopplerMap" class="chart-box"></div>
         

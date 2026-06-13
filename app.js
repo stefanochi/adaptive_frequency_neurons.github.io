@@ -6,10 +6,12 @@ const radar = new FmcwRadar(fmcw_base_config);
 const timeAxis = NumPy.linspace(0, radar.t_chirp, radar.n_samples, false);
 
 // --- 2. Live Dynamic State Registries ---
-const MAX_HISTORY_POINTS = 200; 
+const MAX_HISTORY_POINTS = 2000; 
+const MAX_HISTORY_POINTS_DOPPLER = Math.floor(MAX_HISTORY_POINTS / fmcw_base_config.n_samples); 
 let BATCH_SIZE = 4; 
 let chirpCounter = 0;
 let timeStepCounter = 0;
+let timeStepCounter_doppler = 0;
 
 // Dynamic tracking stores
 let activeTargetsList = []; 
@@ -20,8 +22,11 @@ let matrixFrame = radar.init_empty_frame();
 // Keep track of runtime configuration for oscillators
 let currentLambda = 5; // Default lambda scale (x 1e-6)
 let resonator = null;
+let resonator_doppler = null;
 let frequencyHistoryBuffers = [];
 let timeHistory = [];
+let frequencyHistoryBuffers_doppler = [];
+let timeHistory_doppler = [];
 
 // DOM Container Anchors
 const targetContainer = document.getElementById('targetControlsContainer');
@@ -32,15 +37,8 @@ const slider_speed = document.getElementById('speed_slider');
 const display_speed = document.getElementById('val_speed');
 const hannToggle = document.getElementById('hannToggle');
 
-// --- 3. Dynamic Oscillator Network Instantiator ---
-function rebuildOscillatorNetwork() {
+function rebuildRangeOscillators(){
     const n_units = activeTargetsList.length;
-
-    if (n_units === 0) {
-        resonator = null;
-        frequencyHistoryBuffers = [];
-        return;
-    }
 
     const sim_time = fmcw_base_config.t_chirp;
     const t_res = fmcw_base_config.t_chirp / fmcw_base_config.n_samples;
@@ -52,11 +50,44 @@ function rebuildOscillatorNetwork() {
     // Give each oscillator an initial starting range guess close to its corresponding target
     const starting_ranges = activeTargetsList.map(t => t.range - 1 > 0 ? t.range - 1 : t.range);
     resonator.set_starting_frequency(radar.get_freq_from_range(starting_ranges));
+}
+
+function rebuildVelocityOscillators(){
+    const n_units = 1; // always one neuron per range
+    
+    const sim_time = fmcw_base_config.t_chirp * fmcw_base_config.n_chirps;
+    const t_res = fmcw_base_config.t_chirp;
+    const w_scale = [] 
+    for (let i=0; i<activeTargetsList.length; i++){
+        let row = [new Array(n_units).fill(sim_time * 0.08)];
+        w_scale.push(row);
+    }
+    // Reconstruct the adaptive resonator network matching the target count
+    resonator_doppler = new AdaptiveResonate(n_units, sim_time, t_res, 1.0, 0.0, w_scale, activeTargetsList.length);
+}
+
+// --- 3. Dynamic Oscillator Network Instantiator ---
+function rebuildOscillatorNetwork() {
+    const n_units = activeTargetsList.length;
+
+    if (n_units === 0) {
+        resonator = null;
+        resonator_doppler = null;
+        frequencyHistoryBuffers = [];
+        frequencyHistoryBuffers_doppler = [];
+        return;
+    }
+
+    rebuildRangeOscillators();
+    rebuildVelocityOscillators();
 
     // Reset plotting timelines for the new network footprint
     frequencyHistoryBuffers = Array.from({ length: n_units }, () => []);
     timeHistory = [];
+    frequencyHistoryBuffers_doppler = Array.from({ length: n_units }, () => []);
+    timeHistory_doppler = [];
     timeStepCounter = 0;
+    timeStepCounter_doppler = 0;
 
     // Redraw the frequency tracking chart with the correct number of traces
     rebuildFrequencyPlotTraces();
@@ -85,7 +116,7 @@ function createNewTargetUI() {
     card.innerHTML = `
         <strong class="target-label">Target ${targetIdCounter}</strong>
         
-        <input type="range" id="input_${id}" min="0.1" max="4.6" value="${initialRange}" step="0.01">
+        <input type="range" id="input_${id}" min="0.1" max="10" value="${initialRange}" step="0.01">
         <input type="range" id="input_${id}_vel" min="-20" max="20" value="0" step="0.01">
         
         <div class="target-card-meta">
@@ -299,7 +330,13 @@ slider_speed.addEventListener('input', (event) => {
 const layout_freq = {
     title: 'Real-Time Adaptive Frequency Evolution',
     xaxis: { title: 'Simulation Step', range: [0, MAX_HISTORY_POINTS], gridcolor: '#e5e7eb' },
-    yaxis: { title: 'Tracked Target Range (Meters)', range: [0, 4.7], gridcolor: '#e5e7eb' }, // Changed to Range domain for easy tracking visualization
+    yaxis: { title: 'Tracked Target Range (Meters)', range: [0, 10], gridcolor: '#e5e7eb' }, // Changed to Range domain for easy tracking visualization
+    plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff', showlegend: true
+};
+const layout_freq_doppler = {
+    title: 'Real-Time Adaptive Frequency Evolution Doppler',
+    xaxis: { title: 'Simulation Step', range: [0, MAX_HISTORY_POINTS_DOPPLER], gridcolor: '#e5e7eb' },
+    yaxis: { title: 'Tracked Target Velocity (m/s)', range: [-20, 20], gridcolor: '#e5e7eb' }, // Changed to Range domain for easy tracking visualization
     plot_bgcolor: '#ffffff', paper_bgcolor: '#ffffff', showlegend: true
 };
 
@@ -313,7 +350,17 @@ function rebuildFrequencyPlotTraces() {
         line: { width: 1.5 }
     }));
 
+    const traces_freq_doppler = frequencyHistoryBuffers_doppler.map((_, index) => ({
+        x: [],
+        y: [],
+        type: 'scatter',
+        mode: 'lines',
+        name: `Oscillator ${index + 1}`,
+        line: { width: 1.5 }
+    }));
+
     Plotly.newPlot('frequencyHistory', traces_freq, layout_freq, { responsive: true });
+    Plotly.newPlot('frequencyHistoryDoppler', traces_freq_doppler, layout_freq_doppler, { responsive: true });
 }
 
 // --- 8. Continuous Adaptive Simulation Loop ---
@@ -324,29 +371,60 @@ function liveSimulationLoop() {
         return;
     }
 
-    const newXValues = Array.from({ length: resonator.nfreq }, () => []);
-    const newYValues = Array.from({ length: resonator.nfreq }, () => []);
+    let ws_doppler = resonator_doppler.ws;
+
+    const newXValues = Array.from({ length: resonator.nfreq * resonator.n_rxs}, () => []);
+    const newYValues = Array.from({ length: resonator.nfreq * resonator.n_rxs}, () => []);
+
+    let updated_doppler = false;
+    const newXValues_doppler = Array.from({ length: resonator_doppler.nfreq * resonator_doppler.n_rxs}, () => []);
+    const newYValues_doppler = Array.from({ length: resonator_doppler.nfreq * resonator_doppler.n_rxs}, () => []);
 
     for (let step = 0; step < BATCH_SIZE; step++) {
         const sampleIndex = timeStepCounter % rawChirpSamples.length;
         const chirpIndex = chirpCounter % radar.n_chirps;
-        const currentInputSignal = matrixFrame[0][chirpIndex][sampleIndex];
 
-        var { ws } = resonator.update_neurons(currentInputSignal);
+        for (let a=0; a<resonator.n_rxs; a++) {
+            const currentInputSignal = matrixFrame[a][chirpIndex][sampleIndex];
+            var { ws } = resonator.update_neurons_antenna(currentInputSignal, a);
+        }
+
+        if (sampleIndex == Math.floor(radar.n_samples / 2)) {
+            updated_doppler = true;
+            // update doppler resonators only once per chirp, in the middle
+            for (let a=0; a<resonator_doppler.n_rxs; a++) {
+                // hardcoded 0 antenna for range
+                const currentInputSignal_doppler = resonator.vs[0][a];
+                var { ws: ws_doppler_tmp } = resonator_doppler.update_neurons_antenna(currentInputSignal_doppler, a);
+                ws_doppler = ws_doppler_tmp;
+            }
+            timeStepCounter_doppler++;
+
+            for (let a=0; a<resonator_doppler.n_rxs; a++) {
+                for (let k = 0; k < resonator_doppler.nfreq; k++) {
+                    newXValues_doppler[a*resonator_doppler.nfreq + k].push(timeStepCounter_doppler);
+                    let vel_osc = radar.get_velocity_from_doppler_frequency(ws_doppler[a][k] / (2 * Math.PI));
+                    newYValues_doppler[a*resonator_doppler.nfreq + k].push(vel_osc);
+                }
+            }
+        }
         
         timeStepCounter++;
         if(timeStepCounter % radar.n_samples === 0){
             chirpCounter++;
         }
 
-        for (let k = 0; k < resonator.nfreq; k++) {
-            newXValues[k].push(timeStepCounter);
-            let range_osc = radar.get_range_from_freq(ws[0][k] / (2 * Math.PI));
-            newYValues[k].push(range_osc);
+        for (let a=0; a<resonator.n_rxs; a++) {
+            for (let k = 0; k < resonator.nfreq; k++) {
+                newXValues[a*resonator.nfreq + k].push(timeStepCounter);
+                let range_osc = radar.get_range_from_freq(ws[a][k] / (2 * Math.PI));
+                newYValues[a*resonator.nfreq + k].push(range_osc);
+            }
         }
     }
 
-    const traceIndices = Array.from({ length: resonator.nfreq }, (_, i) => i);
+    const traceIndices = Array.from({ length: resonator.nfreq * resonator.n_rxs}, (_, i) => i);
+    const traceIndices_doppler = Array.from({ length: resonator_doppler.nfreq * resonator_doppler.n_rxs}, (_, i) => i);
 
     Plotly.extendTraces('frequencyHistory', {
         x: newXValues,
@@ -356,6 +434,19 @@ function liveSimulationLoop() {
     if (timeStepCounter > MAX_HISTORY_POINTS) {
         layout_freq.xaxis.range = [timeStepCounter - MAX_HISTORY_POINTS, timeStepCounter];
         Plotly.relayout('frequencyHistory', layout_freq);
+    }
+
+    if (updated_doppler) {
+        console.log(newYValues_doppler);
+        Plotly.extendTraces('frequencyHistoryDoppler', {
+            x: newXValues_doppler,
+            y: newYValues_doppler
+        }, traceIndices_doppler, MAX_HISTORY_POINTS_DOPPLER);
+
+        if (timeStepCounter_doppler > MAX_HISTORY_POINTS_DOPPLER) {
+            layout_freq_doppler.xaxis.range = [timeStepCounter_doppler - MAX_HISTORY_POINTS_DOPPLER, timeStepCounter_doppler];
+            Plotly.relayout('frequencyHistoryDoppler', layout_freq_doppler);
+        }
     }
 
     requestAnimationFrame(liveSimulationLoop);
