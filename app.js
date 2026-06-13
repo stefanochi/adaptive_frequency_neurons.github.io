@@ -357,7 +357,7 @@ function handleLambdaUpdateDoppler() {
     if (resonator_doppler) {
         const w_scale = [] 
         for (let i=0; i<activeTargetsList.length; i++){
-            let row = [new Array(n_units).fill(sim_time * 0.005 * currentLambdaDoppler)];
+            let row = [new Array(1).fill(sim_time * 0.005 * currentLambdaDoppler)];
             w_scale.push(row);
         }
         resonator_doppler.w_scale = w_scale;
