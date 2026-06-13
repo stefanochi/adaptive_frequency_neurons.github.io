@@ -460,7 +460,8 @@ function liveSimulationLoop() {
             for (let a=0; a<resonator_doppler.n_rxs; a++) {
                 for (let k = 0; k < resonator_doppler.nfreq; k++) {
                     newXValues_doppler[a*resonator_doppler.nfreq + k].push(timeStepCounter_doppler);
-                    let vel_osc = radar.get_velocity_from_doppler_frequency(ws_doppler[a][k] / (2 * Math.PI));
+                    let raw_vel = radar.get_velocity_from_doppler_frequency(ws_doppler[a][k] / (2 * Math.PI));
+                    let vel_osc = radar.wrapVelocitySymmetric(raw_vel);
                     newYValues_doppler[a*resonator_doppler.nfreq + k].push(vel_osc);
                 }
             }
@@ -518,7 +519,8 @@ function liveSimulationLoop() {
 
         // Map the current raw Doppler tracking value back to velocity bins metrics
         let latestWDoppler = resonator_doppler.ws[k][0];
-        let dopplerEst = radar.get_velocity_from_doppler_frequency(latestWDoppler / (2 * Math.PI));
+        let raw_vel = radar.get_velocity_from_doppler_frequency(latestWDoppler / (2 * Math.PI));
+        let dopplerEst = radar.wrapVelocitySymmetric(raw_vel);
         overlayDopplers.push(dopplerEst);
     }
 

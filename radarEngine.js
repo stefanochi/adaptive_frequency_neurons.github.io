@@ -324,4 +324,19 @@ export class FmcwRadar {
         let lam = FmcwRadar.c / this.fb
         return (lam / 2.0) * frequency;
     }
+
+    wrapVelocitySymmetric(v) {
+        const minV = -20;
+        const maxV = 20;
+        const range = maxV - minV; // 40
+
+        // Shift domain to [0, 40] for standard modulo arithmetic, 
+        // force positive mapping, then shift back down to [-20, 20]
+        let shifted = (v - minV) % range;
+        if (shifted < 0) {
+            shifted += range;
+        }
+        
+        return shifted + minV;
+    }
 }
