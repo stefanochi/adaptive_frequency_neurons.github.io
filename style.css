@@ -137,15 +137,71 @@ input:checked + .slider:before { transform: translateX(24px); }
     margin-bottom: 15px;
 }
 
+/* --- Optimized Target Card System --- */
 .target-card {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 12px;
     background: #f9fafb;
-    padding: 12px;
-    margin-bottom: 10px;
+    padding: 15px;
+    margin-bottom: 12px;
     border-radius: 6px;
     border: 1px solid #e5e7eb;
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.target-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+}
+
+.target-control-row {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Space between slider and text layout */
+    width: 100%;
+}
+
+/* Force the track slider to stretch and absorb all leftover row space */
+.target-control-row input[type="range"] {
+    flex-grow: 1;
+    cursor: pointer;
+    accent-color: #4f46e5;
+    margin: 0;
+}
+
+/* Explicit width boundary prevent text layout from moving when values change */
+.target-control-row .range-value {
+    font-size: 0.85rem;
+    color: #4b5563;
+    white-space: nowrap; /* Stops text wrap formatting */
+    min-width: 95px;     /* Roomy boundary so Range & Speed fit uniform */
+    text-align: right;
+}
+
+.value-display {
+    font-weight: 700;
+    color: #4f46e5;
+}
+
+/* Clean, proportional target extraction button */
+.btn-remove {
+    background-color: #ef4444;
+    color: #ffffff;
+    border: none;
+    padding: 4px 10px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+}
+
+.btn-remove:hover {
+    background-color: #dc2626;
 }
 
 /* --- Chart Canvases Default Sizing Profiles --- */

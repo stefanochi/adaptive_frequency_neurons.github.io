@@ -8,7 +8,7 @@ const timeAxis = NumPy.linspace(0, radar.t_chirp, radar.n_samples, false);
 // --- 2. Live Dynamic State Registries ---
 const MAX_HISTORY_POINTS = 2000; 
 const MAX_HISTORY_POINTS_DOPPLER = Math.floor(MAX_HISTORY_POINTS / fmcw_base_config.n_samples); 
-let BATCH_SIZE = 4; 
+let BATCH_SIZE = 200; 
 let chirpCounter = 0;
 let timeStepCounter = 0;
 let timeStepCounter_doppler = 0;
@@ -18,9 +18,11 @@ let activeTargetsList = [];
 let rawChirpSamples = new Array(fmcw_base_config.n_samples).fill({ re: 0, im: 0 });
 let chirpPlot = new Array(fmcw_base_config.n_samples).fill(0);
 let matrixFrame = radar.init_empty_frame();
+const doppler_hann_window = NumPy.hanning(radar.n_chirps);
 
 // Keep track of runtime configuration for oscillators
 let currentLambda = 5; // Default lambda scale (x 1e-6)
+let currentLambdaDoppler = 5; // Default lambda scale (x 1e-6)
 let resonator = null;
 let resonator_doppler = null;
 let frequencyHistoryBuffers = [];
@@ -33,6 +35,8 @@ const targetContainer = document.getElementById('targetControlsContainer');
 const addTargetBtn = document.getElementById('addTargetBtn');
 const slider_lambda = document.getElementById('lambda_slider');
 const display_lambda = document.getElementById('val_lambda');
+const slider_lambda_doppler = document.getElementById('lambda_slider_doppler');
+const display_lambda_doppler = document.getElementById('val_lambda_doppler');
 const slider_speed = document.getElementById('speed_slider');
 const display_speed = document.getElementById('val_speed');
 const hannToggle = document.getElementById('hannToggle');
@@ -59,7 +63,7 @@ function rebuildVelocityOscillators(){
     const t_res = fmcw_base_config.t_chirp;
     const w_scale = [] 
     for (let i=0; i<activeTargetsList.length; i++){
-        let row = [new Array(n_units).fill(sim_time * 0.08)];
+        let row = [new Array(n_units).fill(sim_time * 0.005 * currentLambdaDoppler)];
         w_scale.push(row);
     }
     // Reconstruct the adaptive resonator network matching the target count
@@ -99,7 +103,7 @@ let targetIdCounter = 0;
 function createNewTargetUI() {
     targetIdCounter++;
     const id = `target_${targetIdCounter}`;
-    let initialRange = Math.round(Math.random() * 4.6 * 10) / 10;
+    let initialRange = Math.round(Math.random() * 9.0 * 10) / 10;
     // Register target state inside the global radar target list
     const targetStateObject = {
         id: id,
@@ -114,17 +118,21 @@ function createNewTargetUI() {
     card.className = 'target-card';
     card.id = `card_${id}`;
     card.innerHTML = `
-        <strong class="target-label">Target ${targetIdCounter}</strong>
-        
-        <input type="range" id="input_${id}" min="0.1" max="10" value="${initialRange}" step="0.01">
-        <input type="range" id="input_${id}_vel" min="-20" max="20" value="0" step="0.01">
-        
-        <div class="target-card-meta">
-            <span class="range-value">Range: <span id="display_${id}" class="value-display">${initialRange}</span> m</span>
-            <span class="range-value">Speed: <span id="display_${id}_vel" class="value-display">0</span> m</span>
-            <button class="btn-remove" id="delete_${id}">Remove</button>
-        </div>
-    `;
+            <div class="target-card-header">
+                <strong class="target-label">Target ${targetIdCounter}</strong>
+                <button class="btn-remove" id="delete_${id}">Remove</button>
+            </div>
+            
+            <div class="target-control-row">
+                <input type="range" id="input_${id}" min="0.1" max="10" value="${initialRange}" step="0.01">
+                <span class="range-value">Range: <span id="display_${id}" class="value-display">${initialRange}</span> m</span>
+            </div>
+            
+            <div class="target-control-row">
+                <input type="range" id="input_${id}_vel" min="-20" max="20" value="0" step="0.01">
+                <span class="range-value">Speed: <span id="display_${id}_vel" class="value-display">0</span> m/s</span>
+            </div>
+        `;
 
     targetContainer.appendChild(card);
 
@@ -278,8 +286,19 @@ const layout = {
 Plotly.newPlot('radarChart', [{ x: timeAxis, y: chirpPlot, type: 'scatter', mode: 'lines', line: { color: '#4f46e5', width: 2 } }], layout, { responsive: true });
 
 // Plotly Configuration for the Range-Doppler Heatmap Canvas
-const rangeAxisAxis = Array.from({ length: radar.n_samples }, (_, i) =>  i);
-const dopplerAxisAxis = Array.from({ length: radar.n_chirps }, (_, i) => i - (radar.n_chirps / 2));
+const effectiveFs = fmcw_base_config.n_samples / fmcw_base_config.t_chirp;
+const maxRangeMeters = radar.get_range_from_freq(effectiveFs - 1e-5); // Max detectable range (fs / 2)
+const rangeAxisAxis = Array.from({ length: radar.n_samples }, (_, i) => {
+    return (i / radar.n_samples) * maxRangeMeters;
+});
+
+// Calculate physical velocity vectors for the Doppler axis rows
+const dopplerAxisAxis = Array.from({ length: radar.n_chirps }, (_, i) => {
+    // Center-offset the index bin relative to the vertical FFT Shift
+    const binOffset = i - (radar.n_chirps / 2);
+    // Convert the bin offset index directly to physical m/s velocity units
+    return radar.get_velocity_from_doppler_frequency(binOffset / (radar.t_chirp * radar.n_chirps));
+});
 
 const rdmTrace = {
     x: rangeAxisAxis,
@@ -290,16 +309,39 @@ const rdmTrace = {
     showscale: false
 };
 
+// Trace 1: The overlay scatter points (Neurons/Targets tracker markers)
+const scatterOverlayTrace = {
+    x: [], // Will hold Range values dynamically
+    y: [], // Will hold Doppler/Velocity values dynamically
+    mode: 'markers',
+    type: 'scatter',
+    marker: {
+        color: '#ffffff',      /* Bright contrast color over Jet heatmap */
+        size: 10,
+        symbol: 'circle-open', /* Open circle lets you see the peak underneath */
+        line: { color: '#00ff00', width: 2 } /* Neon green outline */
+    },
+    name: 'Tracked Points'
+};
+
 const rdmLayout = {
-    title: 'Live 2D Range-Doppler Spectrogram Map',
-    xaxis: { title: 'Range (Meters)', range: [0,   128], gridcolor: '#e5e7eb' },
-    yaxis: { title: 'Doppler / Velocity (Bins)', gridcolor: '#e5e7eb' },
+    title: 'Live 2D Range-Doppler Map',
+    xaxis: { title: 'Range (Meters)', range: [0,   10], gridcolor: '#e5e7eb' },
+    yaxis: { title: 'Doppler / Velocity (Bins)', range: [-20, 20], gridcolor: '#e5e7eb' },
     plot_bgcolor: '#ffffff',
     paper_bgcolor: '#ffffff',
     margin: { t: 50, b: 50, l: 50, r: 20 }
 };
 
-Plotly.newPlot('rangeDopplerMap', [rdmTrace], rdmLayout, { responsive: true });
+Plotly.newPlot('rangeDopplerMap', [rdmTrace, scatterOverlayTrace], rdmLayout, { responsive: true });
+
+function updateScatterOverlay(currentRanges, currentVelocities) {
+    // We update trace index 1 (our scatter trace)
+    Plotly.restyle('rangeDopplerMap', {
+        x: [currentRanges],
+        y: [currentVelocities]
+    }, [1]); // explicitly specifies to target the second trace index
+}
 
 function handleLambdaUpdate() {
     currentLambda = parseFloat(slider_lambda.value);
@@ -309,7 +351,21 @@ function handleLambdaUpdate() {
     }
 }
 
+function handleLambdaUpdateDoppler() {
+    currentLambdaDoppler = parseFloat(slider_lambda_doppler.value);
+    display_lambda_doppler.innerText = currentLambdaDoppler;
+    if (resonator_doppler) {
+        const w_scale = [] 
+        for (let i=0; i<activeTargetsList.length; i++){
+            let row = [new Array(n_units).fill(sim_time * 0.005 * currentLambdaDoppler)];
+            w_scale.push(row);
+        }
+        resonator_doppler.w_scale = w_scale;
+    }
+}
+
 slider_lambda.addEventListener('input', handleLambdaUpdate);
+slider_lambda_doppler.addEventListener('input', handleLambdaUpdateDoppler);
 
 hannToggle.addEventListener('change', (event) => {
     radar.enable_hann = event.target.checked;
@@ -321,7 +377,6 @@ addTargetBtn.addEventListener('click', () => createNewTargetUI());
 
 slider_speed.addEventListener('input', (event) => {
     let val = parseInt(slider_speed.value);
-    console.log(val);
     display_speed.innerText = val;
     BATCH_SIZE = val;
 });
@@ -394,7 +449,9 @@ function liveSimulationLoop() {
             // update doppler resonators only once per chirp, in the middle
             for (let a=0; a<resonator_doppler.n_rxs; a++) {
                 // hardcoded 0 antenna for range
-                const currentInputSignal_doppler = resonator.vs[0][a];
+                let currentInputSignal_doppler = resonator.vs[0][a] 
+                currentInputSignal_doppler.re = currentInputSignal_doppler.re * doppler_hann_window[chirpIndex];
+                currentInputSignal_doppler.im = currentInputSignal_doppler.im * doppler_hann_window[chirpIndex];
                 var { ws: ws_doppler_tmp } = resonator_doppler.update_neurons_antenna(currentInputSignal_doppler, a);
                 ws_doppler = ws_doppler_tmp;
             }
@@ -437,7 +494,6 @@ function liveSimulationLoop() {
     }
 
     if (updated_doppler) {
-        console.log(newYValues_doppler);
         Plotly.extendTraces('frequencyHistoryDoppler', {
             x: newXValues_doppler,
             y: newYValues_doppler
@@ -448,6 +504,27 @@ function liveSimulationLoop() {
             Plotly.relayout('frequencyHistoryDoppler', layout_freq_doppler);
         }
     }
+
+    if (resonator && resonator_doppler && activeTargetsList.length > 0) {
+    const overlayRanges = [];
+    const overlayDopplers = [];
+
+    // Extract the absolute latest single frequency tracking estimate per active unit 
+    for (let k = 0; k < resonator.nfreq; k++) {
+        // Map the current raw radian tracking value back to range metrics
+        let latestWRange = resonator.ws[0][k]; 
+        let rangeEst = radar.get_range_from_freq(latestWRange / (2 * Math.PI));
+        overlayRanges.push(rangeEst);
+
+        // Map the current raw Doppler tracking value back to velocity bins metrics
+        let latestWDoppler = resonator_doppler.ws[k][0];
+        let dopplerEst = radar.get_velocity_from_doppler_frequency(latestWDoppler / (2 * Math.PI));
+        overlayDopplers.push(dopplerEst);
+    }
+
+    // Push the fresh coordinates up to overlay on top of your background matrix heatmap frame
+    updateScatterOverlay(overlayRanges, overlayDopplers);
+}
 
     requestAnimationFrame(liveSimulationLoop);
 }
