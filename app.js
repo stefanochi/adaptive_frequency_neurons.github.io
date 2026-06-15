@@ -335,9 +335,9 @@ const scatterOverlayTrace = {
     type: 'scatter',
     marker: {
         color: '#ffffff',      /* Bright contrast color over Jet heatmap */
-        size: 10,
+        size: 15,
         symbol: 'circle-open', /* Open circle lets you see the peak underneath */
-        line: { color: '#00ff00', width: 2 } /* Neon green outline */
+        line: { color: '#00ff00', width: 5 } /* Neon green outline */
     },
     name: 'Tracked Points'
 };
