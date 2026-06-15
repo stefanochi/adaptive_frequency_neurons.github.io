@@ -41,6 +41,8 @@ const slider_lambda_doppler = document.getElementById('lambda_slider_doppler');
 const display_lambda_doppler = document.getElementById('val_lambda_doppler');
 const slider_speed = document.getElementById('speed_slider');
 const display_speed = document.getElementById('val_speed');
+const slider_noise = document.getElementById('noise_slider');
+const display_noise = document.getElementById('val_noise');
 const hannToggle = document.getElementById('hannToggle');
 
 function rebuildRangeOscillators(){
@@ -397,6 +399,13 @@ slider_speed.addEventListener('input', (event) => {
     let val = Math.max(1, Math.round(Math.pow(rawVal, 3) * max_speed));
     display_speed.innerText = parseInt(val);
     BATCH_SIZE = val;
+});
+
+slider_noise.addEventListener('input', (event) => {
+    let val = parseFloat(slider_noise.value);
+    display_noise.innerText = parseInt(val);
+    radar.target_snr_db = val;
+    runSimulationPipeline();
 });
 
 // --- 7. Dynamic Plotly Traces Management ---
