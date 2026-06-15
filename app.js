@@ -6,7 +6,7 @@ const radar = new FmcwRadar(fmcw_base_config);
 const timeAxis = NumPy.linspace(0, radar.t_chirp, radar.n_samples, false);
 
 // --- 2. Live Dynamic State Registries ---
-const MAX_HISTORY_POINTS = 2000; 
+const MAX_HISTORY_POINTS = 20000; 
 const MAX_HISTORY_POINTS_DOPPLER = Math.floor(MAX_HISTORY_POINTS / fmcw_base_config.n_samples); 
 let BATCH_SIZE = 200; 
 let chirpCounter = 0;
