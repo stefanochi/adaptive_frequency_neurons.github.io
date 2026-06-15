@@ -12,6 +12,8 @@ let BATCH_SIZE = 200;
 let chirpCounter = 0;
 let timeStepCounter = 0;
 let timeStepCounter_doppler = 0;
+const sim_time = fmcw_base_config.t_chirp;
+const sim_time_doppler = fmcw_base_config.t_chirp * fmcw_base_config.n_chirps;
 
 // Dynamic tracking stores
 let activeTargetsList = []; 
@@ -44,7 +46,6 @@ const hannToggle = document.getElementById('hannToggle');
 function rebuildRangeOscillators(){
     const n_units = activeTargetsList.length;
 
-    const sim_time = fmcw_base_config.t_chirp;
     const t_res = fmcw_base_config.t_chirp / fmcw_base_config.n_samples;
     const w_scale = [new Array(n_units).fill(currentLambda * 1e-6)];
 
@@ -59,15 +60,14 @@ function rebuildRangeOscillators(){
 function rebuildVelocityOscillators(){
     const n_units = 1; // always one neuron per range
     
-    const sim_time = fmcw_base_config.t_chirp * fmcw_base_config.n_chirps;
     const t_res = fmcw_base_config.t_chirp;
     const w_scale = [] 
     for (let i=0; i<activeTargetsList.length; i++){
-        let row = [new Array(n_units).fill(sim_time * 0.005 * currentLambdaDoppler)];
+        let row = [new Array(n_units).fill(sim_time_doppler * 0.005 * currentLambdaDoppler)];
         w_scale.push(row);
     }
     // Reconstruct the adaptive resonator network matching the target count
-    resonator_doppler = new AdaptiveResonate(n_units, sim_time, t_res, 1.0, 0.0, w_scale, activeTargetsList.length);
+    resonator_doppler = new AdaptiveResonate(n_units, sim_time_doppler, t_res, 1.0, 0.0, w_scale, activeTargetsList.length);
 }
 
 // --- 3. Dynamic Oscillator Network Instantiator ---
@@ -357,7 +357,7 @@ function handleLambdaUpdateDoppler() {
     if (resonator_doppler) {
         const w_scale = [] 
         for (let i=0; i<activeTargetsList.length; i++){
-            let row = [new Array(1).fill(sim_time * 0.005 * currentLambdaDoppler)];
+            let row = [new Array(1).fill(sim_time_doppler * 0.005 * currentLambdaDoppler)];
             w_scale.push(row);
         }
         resonator_doppler.w_scale = w_scale;
@@ -376,8 +376,10 @@ hannToggle.addEventListener('change', (event) => {
 addTargetBtn.addEventListener('click', () => createNewTargetUI());
 
 slider_speed.addEventListener('input', (event) => {
-    let val = parseInt(slider_speed.value);
-    display_speed.innerText = val;
+    let rawVal = parseFloat(slider_speed.value);
+    const max_speed = radar.n_samples * radar.n_chirps;
+    let val = Math.max(1, Math.round(Math.pow(rawVal, 3) * max_speed));
+    display_speed.innerText = parseInt(val);
     BATCH_SIZE = val;
 });
 
