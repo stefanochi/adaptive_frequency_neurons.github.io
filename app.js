@@ -206,7 +206,7 @@ function libraryFFT1D(complexArray) {
 
 /**
  * Computes a 2D FFT on a radar frame matrix (Chirps x Samples) using an external FFT library.
- * Includes a vertical FFT shift to center zero-Doppler velocity.
+ * Includes a vertical Hanning window on slow-time and a vertical FFT shift.
  * * @param {Array<Array<{re: number, im: number}>>} frameMatrix - The 2D time-domain ADC data frame.
  * @returns {Array<Array<number>>} A 2D matrix of logarithmic spectral magnitudes (dB).
  */
@@ -215,22 +215,38 @@ function compute2DFFT(frameMatrix) {
     const nSamples = frameMatrix[0].length;
 
     // ==========================================
+    // PRE-COMPUTE: Slow-Time (Doppler) Hanning Window
+    // ==========================================
+    const slowTimeHann = new Float64Array(nChirps);
+    for (let row = 0; row < nChirps; row++) {
+        // Standard Hanning Window formula
+        slowTimeHann[row] = 0.5 * (1 - Math.cos((2 * Math.PI * row) / (nChirps - 1)));
+    }
+
+    // ==========================================
     // STAGE 1: Horizontal RANGE FFT 
     // ==========================================
     const rangeProcessedMatrix = frameMatrix.map(chirpRow => libraryFFT1D(chirpRow));
 
     // ==========================================
-    // STAGE 2: Vertical DOPPLER FFT
+    // STAGE 2: Vertical DOPPLER FFT (with Hanning Window)
     // ==========================================
     const complex2DMatrix = Array.from({ length: nChirps }, () => new Array(nSamples));
 
     for (let col = 0; col < nSamples; col++) {
         const columnVector = [];
         for (let row = 0; row < nChirps; row++) {
-            columnVector.push(rangeProcessedMatrix[row][col]);
+            const rangeSample = rangeProcessedMatrix[row][col];
+            const w = radar.enable_hann ? slowTimeHann[row] : 1.0; // Get window weight for this chirp index
+            
+            // Apply window to both real and imaginary parts without muting the original array
+            columnVector.push({
+                re: rangeSample.re * w,
+                im: rangeSample.im * w
+            });
         }
 
-        // Run the 1D FFT vertically down the column vector using the library
+        // Run the 1D FFT vertically down the windowed column vector
         const dopplerProcessedVector = libraryFFT1D(columnVector);
 
         // Apply FFT-Shift to center the 0-velocity component vertically
@@ -472,6 +488,9 @@ function liveSimulationLoop() {
         timeStepCounter++;
         if(timeStepCounter % radar.n_samples === 0){
             chirpCounter++;
+            if (chirpCounter % radar.n_chirps === 0) {
+                runSimulationPipeline();
+            }
         }
 
         for (let a=0; a<resonator.n_rxs; a++) {
